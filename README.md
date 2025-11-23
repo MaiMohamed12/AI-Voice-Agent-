@@ -9,7 +9,7 @@
 
 
 ## Quick Setup
-## Get API Keys 
+### Get API Keys 
 ### Google Gemini:
 
 1. Visit aistudio.google.com/apikey
