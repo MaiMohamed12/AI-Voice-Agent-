@@ -5,7 +5,13 @@
     You speak → LiveKit Cloud → Gemini AI                                                               
      → Searches your FAQs → Speaks  answer back                                                                 
 
+Here's the magic: When you ask "What are your business hours?", the system:
 
+1. Hears you speak through your microphone
+2. Sends your voice to Gemini (Google's AI)
+3. Gemini understands your question
+4. Searches your knowledge base for the answer
+5. Speaks the answer back to you naturally
 
 
 ## Quick Setup
