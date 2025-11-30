@@ -74,7 +74,7 @@ Opens browser to localhost:3000
 - "How can I contact support?"
 - "Is my data secure?"
   
-![voice_agent.mp4](https://youtu.be/QUhlESJVynM)
+[voice_agent.mp4](https://youtu.be/QUhlESJVynM)
 
 
 
