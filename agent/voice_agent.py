@@ -1,112 +1,84 @@
-"""
-LiveKit Voice Agent with Gemini Live API + RAG
-"""
-
 import logging
 import asyncio
-import os
 from dotenv import load_dotenv
 from livekit.agents import (
     AutoSubscribe,
     JobContext,
     WorkerOptions,
     cli,
-    Agent,           
-    AgentSession,   
-    function_tool,   
 )
+from livekit.agents.voice import Agent, AgentSession
+from livekit.agents.llm import function_tool
 from livekit.plugins import google
-from rag_system import RAGSystem  
+from rag_system import RAGSystem
+
 load_dotenv()
 logger = logging.getLogger("gemini-agent")
-logger.setLevel(logging.INFO)
-
 rag = RAGSystem()
-
-
 async def entrypoint(ctx: JobContext):
-    logger.info("Starting Gemini Voice Agent")
-    
     await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-    logger.info("Connected to room")
 
-    logger.info("Initializing Gemini model")
+    # 1. DEFINE THE MODEL (The "General" Brain)
     model = google.beta.realtime.RealtimeModel(
-        model="gemini-2.0-flash-exp",  
+        model="gemini-live-2.5-flash-preview",
         voice="Aoede",
-        api_key=os.getenv("GOOGLE_API_KEY"),  
     )
-    logger.info("model initialized")
 
+    
     @function_tool
-    async def lookup_company_info(query: str) -> str:
+    async def lookup_company_info(query: str):
         """
-        Search knowledge base for company information, policies, products, and support details.
-        Use for any question about the company.
-        
+        Searches the company's FAQ database for information.
         Args:
-            query: The user's question
+            query: The user's question or keywords to search for
         """
         logger.info(f"Tool called with query: {query}")
         
-        try:
-            result = rag.get_context(query, top_k=2)
-            logger.info(f"RAG returned {len(result)} chars")
-            return result
-        except Exception as e:
-            logger.error(f"RAG error: {e}")
-            return "I'm having trouble accessing the FAQ database right now."
-
-    logger.info("Creating agent with instructions")
+      
+        return rag.get_context(query)
     agent = Agent(
         instructions=(
-            "You are a helpful customer support assistant. Answer questions using ONLY the knowledge base.\n"
-            "\n"
-            "RULES:\n"
-            "1. ALWAYS use lookup_company_info tool for any company question\n"
-            "2. Answer ONLY with information from the tool results - never improvise\n"
-            "3. If no info found, say: 'I don't have that information. Please contact support.'\n"
-            "4. For personal/account questions, say: 'I can't access specific account info. Please contact support.'\n"
-            "5. For off-topic questions, redirect to company topics\n"
+            "You are a helpful company FAQ assistant. Your role is to answer general questions about "
+        "company policies, services, and procedures using ONLY the FAQ database.\n"
+        "\n"
+        "CRITICAL RULES - READ CAREFULLY:\n"
+        "1. You ONLY have access to general FAQ information - you CANNOT access specific customer data, "
+        "order details, account information, or any personal or transactional data.\n"
+        "\n"
+        "2. ALWAYS use the lookup_company_info tool for ANY question about company policies or procedures.\n"
+        "\n"
+        "3. ANSWER ONLY WITH INFORMATION FROM THE RETRIEVED FAQ DATA:\n"
+        "   - DO NOT use your training data or general knowledge\n"
+        "   - DO NOT improvise or add information not in the FAQ results\n"
+        "   - DO NOT infer or assume anything beyond what's explicitly stated in the FAQ\n"
+        "\n"
+        "4. If the lookup_company_info tool returns no relevant information, "
+        "you MUST respond: 'I don't have that information in my FAQ database. Please contact our support team for help.'\n"
+        "\n"
+        "5. If a user asks about personal, private, or specific account-related information, "
+        "politely explain that you only provide general FAQ information and they should contact support.\n"
+        "\n"
+        "6. NEVER ask for sensitive personal information.\n"
+        "\n"
+        "7. If a question is unrelated to the company or its services, "
+        "respond: 'I can only help with questions related to our company services and policies.'\n"
+        "\n"
+        "REMEMBER: You are a STRICT FAQ assistant. Only repeat information from the FAQ database. "
+        "Never add, infer, or improvise information."
         ),
         tools=[lookup_company_info],
     )
-    logger.info("Agent created")
 
-    # 4. Start session
-    logger.info("Starting session")
+    # 4. START THE SESSION
     session = AgentSession(
         llm=model,
     )
 
     await session.start(agent, room=ctx.room)
     
-    logger.info("=" * 60)
-    logger.info("✅ Agent is LIVE and ready!")
-    logger.info("=" * 60)
-    
     # 5. GREETING
     await asyncio.sleep(1)
-    await session.generate_reply(
-        instructions="Greet the user warmly and introduce yourself as a helpful assistant who can answer questions."
-    )
-    logger.info("Greeting sent")
-
+    session.generate_reply(instructions="Greet the user warmly and introduce yourself as a helpful assistant who can answer questions.")
 
 if __name__ == "__main__":
-    # ✅ Added: Environment checks
-    required_vars = ["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "GOOGLE_API_KEY"]
-    missing = [v for v in required_vars if not os.getenv(v)]
-    
-    if missing:
-        logger.error(f"Missing environment variables: {', '.join(missing)}")
-        logger.error("Add these to your .env file:")
-        logger.error("  - Get Google API key: https://aistudio.google.com/apikey")
-        logger.error("  - Get LiveKit creds: https://cloud.livekit.io/")
-        exit(1)
-    
-    logger.info("✅ Environment loaded")
-    logger.info(f"LiveKit URL: {os.getenv('LIVEKIT_URL')}")
-    logger.info("")
-    
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
